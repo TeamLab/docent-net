@@ -79,8 +79,8 @@ def main(args):
         max_steps=hparams.max_steps,
         log_level="info",
         report_to="wandb",
-        push_to_hub=True
     )
+
     tokenizer = AutoTokenizer.from_pretrained(
         hparams.model_name_or_path,
         revision=hparams.model_revision,
@@ -130,7 +130,6 @@ def main(args):
 
         metrics = train_result.metrics
         metrics["train_samples"] = len(train_dataset)
-        wandb.log(train_result)
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
@@ -148,11 +147,6 @@ def main(args):
     kwargs = {"finetuned_from": hparams.model_name_or_path, "tasks": "question-answering"}
     if hparams.dataset_name:
         kwargs["dataset_tags"] = hparams.dataset_name
-
-    if hparams.push_to_hub:
-        trainer.push_to_hub(**kwargs)
-    else:
-        trainer.create_model_card(**kwargs)
 
 
 if __name__ == "__main__":
