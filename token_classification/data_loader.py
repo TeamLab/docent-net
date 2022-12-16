@@ -1,3 +1,6 @@
+import os
+import glob
+
 import torch
 import numpy as np
 from functools import partial
@@ -8,37 +11,39 @@ from transformers import AutoTokenizer
 
 from utils import LABEL_MAPPING
 
+import logging
 
-class InputFeatures:
-    def __init__(self, input_ids, attention_mask, token_type_ids, label_ids):
-        self.input_ids = input_ids
-        self.attention_mask = attention_mask
-        self.token_type_ids = token_type_ids
-        self.label_ids = label_ids
+logger = logging.getLogger(__name__)
 
 
 class Loader:
-    def __init__(self, CFG):
+    def __init__(self, CFG, tokenizer):
         self.config = CFG
         self.dset_name = CFG.dset_name
         self.task = CFG.task
-        self.PLM = CFG.PLM
+        self.model_name_or_path = CFG.model_name_or_path
         self.batch_size = CFG.train_batch_size
         self.max_length = CFG.max_token_length
         self.seed = CFG.seed
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.PLM)
+        self.tokenizer = tokenizer
 
-    def load(self, mode):
-        dataset = load_dataset(self.dset_name, self.task, split=mode)
-        features = dataset.map(self.tokenize_and_align_labels, batched=True, remove_columns=dataset.column_names)
+    def get_dataset(self, evaluate=False):
+        dataset_type = "validation" if evaluate else "train"
+        model_info = self.model_name_or_path.split("/")[-1]
+        cached_file_name = f"cached_{self.dset_name}_{dataset_type}"
+        cached_features_file = os.path.join(self.config.data_dir, cached_file_name)
 
-        all_input_ids = torch.tensor([f["input_ids"] for f in features], dtype=torch.long)
-        all_attention_mask = torch.tensor([f["attention_mask"] for f in features], dtype=torch.long)
-        all_token_type_ids = torch.tensor([f["token_type_ids"] for f in features], dtype=torch.long)
-        all_label_ids = torch.tensor([f["labels"] for f in features], dtype=torch.long)
+        if os.path.exists(cached_features_file):
+            logger.info(f"Loading features from cached file {cached_features_file}")
+            dataset = torch.load(cached_features_file)
+        else:
+            dataset = load_dataset(path=os.path.join(self.config.data_dir, self.config.dset_name),
+                                   split=dataset_type)
 
-        dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_label_ids)
+            dataset = dataset.map(self.tokenize_and_align_labels, batched=True, remove_columns=dataset.column_names)
+            torch.save(dataset, cached_features_file)
+            logger.info(f"Saved features into cached file {cached_features_file}")
 
         return dataset
 
@@ -70,6 +75,7 @@ class Loader:
             examples["tokens"],
             truncation=True,
             is_split_into_words=True,
+            return_token_type_ids=False,
             padding=self.config.padding,
             max_length=self.config.max_token_length
         )
