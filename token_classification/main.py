@@ -18,7 +18,7 @@ from transformers import (
     AutoConfig,
     AutoTokenizer,
     AutoModelForTokenClassification,
-    default_data_collator,
+    DataCollatorForTokenClassification,
     EarlyStoppingCallback
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -78,6 +78,8 @@ def main(args):
         use_fast=True,
     )
 
+    data_collator = DataCollatorForTokenClassification(tokenizer)
+
     model = AutoModelForTokenClassification.from_pretrained(
         hparams.model_name_or_path,
         config=config,
@@ -85,34 +87,38 @@ def main(args):
 
     loader = Loader(hparams, tokenizer)
 
-    train_datasets = loader.get_dataset(evaluate=False) if args.do_train else None
-    test_datasets = loader.get_dataset(evaluate=True) if args.do_eval or args.do_predict else None
+    train_datasets = loader.get_dataset(dataset_type="train") if args.do_train else None
+    eval_datasets = loader.get_dataset(dataset_type="validation") if args.do_eval else None
 
-    training_args = TrainingArguments(num_train_epochs=hparams.num_train_epochs,
-                                      per_device_train_batch_size=hparams.train_batch_size,
-                                      per_device_eval_batch_size=hparams.valid_batch_size,
-                                      warmup_steps=hparams.warmup_steps,
-                                      warmup_ratio=hparams.warmup_ratio,
-                                      weight_decay=hparams.weight_decay,
-                                      learning_rate=hparams.learning_rate,
-                                      gradient_accumulation_steps=hparams.gradient_accumulation_steps,
-                                      adam_epsilon=hparams.adam_epsilon,
-                                      logging_steps=hparams.logging_steps,
-                                      save_steps=hparams.save_steps,
-                                      fp16=hparams.fp16,
-                                      output_dir=hparams.checkpoint_path,
-                                      evaluation_strategy="steps",
-                                      save_strategy="steps",
-                                      metric_for_best_model="f1",
-                                      load_best_model_at_end=True,
-                                      )
+    training_args = TrainingArguments(
+        output_dir=hparams.checkpoint_path,
+        do_train=args.do_train,
+        do_eval=args.do_eval,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        per_device_train_batch_size=hparams.train_batch_size,
+        per_device_eval_batch_size=hparams.valid_batch_size,
+        learning_rate=hparams.learning_rate,
+        adam_epsilon=hparams.adam_epsilon,
+        num_train_epochs=hparams.num_train_epochs,
+        weight_decay=hparams.weight_decay,
+        # logging_steps=hparams.logging_steps,
+        seed=hparams.seed,
+        fp16=hparams.fp16,
+        warmup_steps=hparams.warmup_steps,
+        warmup_ratio=hparams.warmup_ratio,
+        gradient_accumulation_steps=hparams.gradient_accumulation_steps,
+        metric_for_best_model="f1",
+        load_best_model_at_end=True,
+        log_level="info",
+    )
 
     trainer = Trainer(args=training_args,
                       model=model,
                       train_dataset=train_datasets,
-                      eval_dataset=test_datasets,
+                      eval_dataset=eval_datasets,
                       tokenizer=tokenizer,
-                      data_collator=default_data_collator,
+                      data_collator=data_collator,
                       compute_metrics=compute_metrics,
                       callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
                       )
@@ -133,7 +139,7 @@ def main(args):
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
 
-        metrics["eval_samples"] = len(test_datasets)
+        metrics["eval_samples"] = len(eval_datasets)
 
         logger.info(metrics)
         trainer.log_metrics("eval", metrics)
