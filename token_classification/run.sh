@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 mkdir token_data
-aws s3 sync s3://docent-information/token_data ./token_data --no-sign-request
+aws s3 sync s3://{my_bucket_name}/{my_object_name} ./token_data --no-sign-request
 
 unzip ./token_data/klue/klue.zip -d ./token_data/klue/
 rm -rf ./token_data/klue/klue.zip
