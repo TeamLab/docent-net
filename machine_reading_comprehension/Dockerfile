@@ -25,8 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     wget
 
-RUN groupadd -g 999 eunbinpark
-RUN useradd -r -u 999 -g eunbinpark eunbinpark
 
 RUN rm -rf /var/lib/apt/lists/*
 
